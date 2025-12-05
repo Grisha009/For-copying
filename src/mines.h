@@ -19,5 +19,6 @@ typedef struct {
 
 void update_mines(Mine* mines, int mine_count);
 void spawn_mines(Mine* mines, int *mine_count, Entity *robot, Entity *person);
+Mine make_mine(Mine* mines, int *mine_count, Entity *robot, Entity *person);
 void add_mines_for_level(Mine* mines, int *mine_count, int additional, Entity *robot, Entity *person);
 int mine_at(Vec2 pos, Mine* mines, int mine_count);

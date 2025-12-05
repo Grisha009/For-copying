@@ -128,7 +128,7 @@ void move_robot_ai(Entity *robot, Entity *person, Mine* mines, int mine_count, G
 }
 
 void check_collision(Entity *robot, GameState *state, Mine *mines, int mine_count, GameWindows *gw) {
-    if (state->shield_turns > 0) return;
+    if (state->shield_turns > 0) return; // If shield is active, ignore collisions
     Vec2 body = body_position(robot->pos, state->dir);
     if (mine_at(robot->pos, mines, mine_count) || mine_at(body, mines, mine_count) ||
         is_obstacle_position(robot->pos) || is_obstacle_position(body)) {

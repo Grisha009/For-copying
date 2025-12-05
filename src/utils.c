@@ -11,6 +11,7 @@ void init_ncurses(void) {
     curs_set(0);            // Hide cursor
     srand(time(NULL));
     nodelay(stdscr, TRUE);
+    // Define color pairs (char + bg)
     if (has_colors()) {
         start_color();
         init_pair(1, COLOR_GREEN, COLOR_BLACK);  // robot

@@ -28,36 +28,7 @@ Vec2 spawn_person(Entity *robot, Mine *mines, int mine_count);
 void handle_person_collection(Entity *robot, Entity *person, Entity *powerup, GameState *state, Mine *mines, int *mine_count);
 void maybe_spawn_powerup(Entity *powerup, Entity *robot, Mine *mines, int mine_count);
 void save_score(GameState *state);
-
-/* ------------ Function implementations ------------ */
-
-void draw_title_screen(GameState *state)
-{
-    clear();
-    mvprintw(1, 10, "ROBOT SAVE THE PEOPLE GAME");
-    mvprintw(3, 4, "Instructions:");
-    mvprintw(4, 6, "- Chase the person (P) while avoiding mines (X) and the central obstacle (#)");
-    mvprintw(5, 6, "- Robot has a body (O) and a head (< > ^ v) showing direction");
-    mvprintw(6, 6, "- Manual mode keeps moving in your last direction; AI mode chases automatically");
-    mvprintw(7, 6, "- Press 'm' to toggle Manual/AI, 'q' to quit");
-    mvprintw(8, 6, "- Power-up (*) grants a short shield (creative feature)");
-    mvprintw(10, 4, "Enter your name: ");
-    echo();
-    nodelay(stdscr, FALSE);
-    getnstr(state->player_name, (int)(sizeof(state->player_name) - 1));
-    noecho();
-    nodelay(stdscr, TRUE);
-    if (strlen(state->player_name) == 0) {
-        strncpy(state->player_name, "Player", sizeof(state->player_name) - 1);
-    }
-    mvprintw(12, 4, "Recent leaderboard:");
-    show_leaderboard(13);
-    mvprintw(18, 4, "Press any key to start...");
-    refresh();
-    getch();
-    clear();
-    refresh();
-}
+void draw_title_screen(GameState *state);
 
 int main(void) {    
     srand((unsigned int)time(NULL));
@@ -148,9 +119,10 @@ void handle_person_collection(Entity *robot, Entity *person, Entity *powerup, Ga
 }
 
 void maybe_spawn_powerup(Entity *powerup, Entity *robot, Mine *mines, int mine_count) {
-    if (powerup->pos.x != -1) return;
+    if (powerup->pos.x != -1) return; // Do not move the current powerup if there is one
     if ((rand() % 5) == 0) {
         Vec2 pos;
+        // Generate position until it's free
         do {
             pos.x = rand() % (BOARD_COLS - 2) + 1;
             pos.y = rand() % (BOARD_ROWS - 2) + 1;
@@ -164,6 +136,7 @@ void update_UI(GameWindows *gw, GameState* state) {
     WINDOW* win = gw->ui_win;
     werase(win);
     box(win, 0, 0);
+    // Print game state
     mvwprintw(win, 1, 1, "Player: %s", state->player_name);
     mvwprintw(win, 2, 1, "Level: %d", state->level);
     mvwprintw(win, 2, 11, "Lives: %d", state->lives);
@@ -180,9 +153,10 @@ void draw_game(GameWindows *gw, Entity *player, Entity *person, Entity *powerup,
     werase(win); // reset the window
     box(win, 0, 0);
 
+    // Draw obstacles
     draw_obstacle(gw);
 
-    // Draw person
+    // Draw the person
     mvwaddch(win, person->pos.y, person->pos.x, person->glyph | COLOR_PAIR(2));
 
     // Draw mines
@@ -190,12 +164,12 @@ void draw_game(GameWindows *gw, Entity *player, Entity *person, Entity *powerup,
         mvwaddch(win, mines[i].pos.y, mines[i].pos.x, MINE | COLOR_PAIR(3));
     }
 
-    // Draw powerup if active
+    // Draw powerup (if active)
     if (powerup->pos.x >= 0) {
         mvwaddch(win, powerup->pos.y, powerup->pos.x, powerup->glyph | COLOR_PAIR(5));
     }
 
-    // Draw robot body/head
+    // Draw robot body and head
     Direction render_dir = (state->dir == NONE) ? EAST : state->dir;
     Vec2 body = body_position(player->pos, render_dir);
     mvwaddch(win, body.y, body.x, ROBOT_BODY | COLOR_PAIR(1));
@@ -233,9 +207,40 @@ void show_leaderboard(int start_row) {
     char name[32];
     int score;
     int row = start_row;
+    mvprintw(row++, 6, "%-16s %6s", "Name", "Score");
     while (fscanf(file, "%31s %d", name, &score) == 2 && row < start_row + 6) {
-        mvprintw(row, 6, "%s - %d", name, score);
+        mvprintw(row, 6, "%-16s %6d", name, score);
         row++;
     }
     fclose(file);
+}
+
+void draw_title_screen(GameState *state)
+{
+    clear();
+    mvprintw(1, 10, "ROBOT SAVE THE PEOPLE GAME");
+    mvprintw(2, 4, "Instructions:");
+    mvprintw(3, 6, "- Chase the person (P) while avoiding mines (X) and obstacles (#)");
+    mvprintw(4, 6, "- The robot has a body (O) and a head (>), make sure you avoid collisions for both of them!");
+    mvprintw(5, 6, "- Press 'm' to switch between manual and AI controls");
+    mvprintw(6, 6, "- Press 'q' to quit");
+    mvprintw(7, 6, "- The power-up (*) grants a short shield that saves you from all collisions");
+    mvprintw(8, 4, "Enter your name: ");
+    // Get players name
+    echo();
+    nodelay(stdscr, FALSE);
+    getnstr(state->player_name, (int)(sizeof(state->player_name) - 1));
+    // Go back to game mode
+    noecho();
+    nodelay(stdscr, TRUE);
+    if (strlen(state->player_name) == 0) {
+        strncpy(state->player_name, "Player", sizeof(state->player_name) - 1);
+    }
+    mvprintw(12, 4, "Leaderboard:");
+    show_leaderboard(13);
+    mvprintw(18, 4, "Press any key to start...");
+    refresh();
+    getch();
+    clear();
+    refresh();
 }

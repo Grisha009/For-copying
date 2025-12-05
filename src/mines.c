@@ -56,6 +56,7 @@ void update_mines(Mine* mines, int mine_count) {
                     break;
             }
 
+            // Fix conflicts
             if (m->pos.x >= BOARD_COLS - 2) m->pos.x = BOARD_COLS - 3;
             if (m->pos.y >= BOARD_ROWS - 2) m->pos.y = BOARD_ROWS - 3;
 
@@ -67,7 +68,7 @@ void update_mines(Mine* mines, int mine_count) {
     
 }
 
-int mine_at(Vec2 pos, Mine* mines, int mine_count) {
+int mine_at(Vec2 pos, Mine* mines, int mine_count) { // Check if there is a mine at pos
     for (int i = 0; i < mine_count; i++) {
         if (mines[i].pos.x == pos.x && mines[i].pos.y == pos.y) return 1;
     }
@@ -86,42 +87,47 @@ static int mine_conflicts(Vec2 pos, Mine* mines, int mine_count, Entity *robot, 
     return 0;
 }
 
+Mine make_mine(Mine* mines, int *mine_count, Entity *robot, Entity *person) {
+    Mine m;
+    // Make sure position of the new mine doesn't cause any conflicts
+    do {
+        m.base_pos.x = rand() % (BOARD_COLS - 2) + 1;
+        m.base_pos.y = rand() % (BOARD_ROWS - 2) + 1;
+    } while (mine_conflicts(m.base_pos, mines, *mine_count, robot, person));
+    m.pos = m.base_pos;
+    
+    int mine_type = rand() % 4; // random mine type
+    if (mine_type % 4 == 0) {
+        m.type = MINE_LR;
+        m.dm = (rand() % 2 == 0) ? 1 : -1;
+        m.step = 0;
+    }
+    else if (mine_type % 4 == 1) {
+        m.type = MINE_LOOP_4;
+        m.dm = (rand() % 2 == 0) ? 1 : -1;
+        m.step = rand() % 4 ;
+    }
+    else if (mine_type % 4 == 2) {
+        m.type = MINE_UD;
+        m.dm = (rand() % 2 == 0) ? 1 : -1;
+        m.step = 0;
+    } else {
+        m.type = MINE_STATIC;
+    }
+
+}
+
 void spawn_mines(Mine* mines, int *mine_count, Entity *robot, Entity *person) {
 
     for (int i = 0; i < 5; i++)
     {
-        Mine m;
-
-        do {
-            m.base_pos.x = rand() % (BOARD_COLS - 2) + 1;
-            m.base_pos.y = rand() % (BOARD_ROWS - 2) + 1;
-        } while (mine_conflicts(m.base_pos, mines, *mine_count, robot, person));
-        m.pos = m.base_pos;
-
-        if (i % 4 == 0) {
-            m.type = MINE_LR;
-            m.dm = (rand() % 2 == 0) ? 1 : -1;
-            m.step = 0;
-        }
-        else if (i % 4 == 1) {
-            m.type = MINE_LOOP_4;
-            m.dm = (rand() % 2 == 0) ? 1 : -1;
-            m.step = rand() % 4 ;
-        }
-        else if (i % 4 == 2) {
-            m.type = MINE_UD;
-            m.dm = (rand() % 2 == 0) ? 1 : -1;
-            m.step = 0;
-        } else {
-            m.type = MINE_STATIC;
-        }
-        mines[*mine_count] = m;
+        mines[*mine_count] = make_mine(mines, mine_count, robot, person);
         (*mine_count)++;
     }
     
 }
 
-void add_mines_for_level(Mine* mines, int *mine_count, int additional, Entity *robot, Entity *person) {
+void add_mines_for_level(Mine* mines, int *mine_count, int additional, Entity *robot, Entity *person) { // Adding mines
     for (int i = 0; i < additional && *mine_count < MAX_MINES; i++) {
         Mine m;
         do {

@@ -11,6 +11,14 @@ void init_ncurses(void) {
     curs_set(0);            // Hide cursor
     srand(time(NULL));
     nodelay(stdscr, TRUE);
+    if (has_colors()) {
+        start_color();
+        init_pair(1, COLOR_GREEN, COLOR_BLACK);  // robot
+        init_pair(2, COLOR_CYAN, COLOR_BLACK);   // person
+        init_pair(3, COLOR_RED, COLOR_BLACK);    // mines
+        init_pair(4, COLOR_YELLOW, COLOR_BLACK); // obstacle
+        init_pair(5, COLOR_MAGENTA, COLOR_BLACK);// powerup
+    }
 }
 
 void shutdown_ncurses(GameWindows *gw) {

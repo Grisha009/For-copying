@@ -1,4 +1,6 @@
 #include <ncurses.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -6,137 +8,159 @@
 
 #include "utils.h"
 #include "mines.h"
+#include "robot.h"
+#include "obstacle.h"
 #include "consts.h"
 
+/* ------------ Constants ------------ */
 
-/* ------------ Function declarations ------------ */
+static const char *LEADERBOARD_PATH = "leaderboard.txt";
 
+/* ------------ Helper declarations ------------ */
 
-// Title + Game UI
-void draw_title_screen(void);
-void draw_ui(GameWindows *gw, GameState* state);
-void draw_game(GameWindows *gw, Entity *player, Mine* mines, int mine_count);
+void draw_title_screen(GameState *state);
+void update_UI(GameWindows *gw, GameState* state);
+void draw_game(GameWindows *gw, Entity *player, Entity *person, Entity *powerup, Mine* mines, int mine_count, GameState *state);
+void game_over_screen(GameWindows *gw, GameState *state);
+void show_leaderboard(int start_row);
 
-// Updating
-void handle_input(int ch, GameState *state, Entity *player);
-void move_robot(Direction dir, Entity *robot, GameState *state);
-
-// Logic
-void collision_detection();
-
-
-void draw_title_screen(void)
-{
-    mvprintw(0, 10, "ROBOT SAVE THE PEOPLE GAME");
-    mvprintw(0, 10, "Instructions:\n- Chase the person while avoiding mines (X)\n- Avoid the cross-shaped obstacle (#)\n- Catch the person to score points");
-    refresh();
-}
+Vec2 spawn_person(Entity *robot, Mine *mines, int mine_count);
+void handle_person_collection(Entity *robot, Entity *person, Entity *powerup, GameState *state, Mine *mines, int *mine_count);
+void maybe_spawn_powerup(Entity *powerup, Entity *robot, Mine *mines, int mine_count);
+void save_score(GameState *state);
 
 /* ------------ Function implementations ------------ */
 
-
+void draw_title_screen(GameState *state)
+{
+    clear();
+    mvprintw(1, 10, "ROBOT SAVE THE PEOPLE GAME");
+    mvprintw(3, 4, "Instructions:");
+    mvprintw(4, 6, "- Chase the person (P) while avoiding mines (X) and the central obstacle (#)");
+    mvprintw(5, 6, "- Robot has a body (O) and a head (< > ^ v) showing direction");
+    mvprintw(6, 6, "- Manual mode keeps moving in your last direction; AI mode chases automatically");
+    mvprintw(7, 6, "- Press 'm' to toggle Manual/AI, 'q' to quit");
+    mvprintw(8, 6, "- Power-up (*) grants a short shield (creative feature)");
+    mvprintw(10, 4, "Enter your name: ");
+    echo();
+    nodelay(stdscr, FALSE);
+    getnstr(state->player_name, (int)(sizeof(state->player_name) - 1));
+    noecho();
+    nodelay(stdscr, TRUE);
+    if (strlen(state->player_name) == 0) {
+        strncpy(state->player_name, "Player", sizeof(state->player_name) - 1);
+    }
+    mvprintw(12, 4, "Recent leaderboard:");
+    show_leaderboard(13);
+    mvprintw(18, 4, "Press any key to start...");
+    refresh();
+    getch();
+    clear();
+    refresh();
+}
 
 int main(void) {    
+    srand((unsigned int)time(NULL));
+
     // ----------------------- INITIAL GAME SETUP -----------------------------
     GameWindows gw = {0};
-    GameState state = {.score = 0, .level = 1, .lives = 3, .running = 1, .player_name="Bob", .dir = NONE};
-    Entity player = {.pos = {1, 1}, .glyph = ROBOT_BODY};
-    Entity person = {.pos = {10, 10}, .glyph = PERSON};
+    GameState state = {.score = 0, .level = 1, .lives = 3, .running = 1, .player_name="Bob", .dir = EAST, .ai_mode = 0, .tick_delay = BASE_TICK_DELAY, .shield_turns = 0};
+    Entity player = {.pos = ROBOT_START, .glyph = ROBOT_BODY};
+    Entity person = {.pos = {0, 0}, .glyph = PERSON};
+    Entity powerup = {.pos = {-1, -1}, .glyph = POWERUP};
     Mine mines[MAX_MINES] = {0};
     int mine_count = 0;
-    srand((unsigned int)time(NULL));
-    init_mines(mines, &mine_count);
-
+    
     // ----------------------- INITIAL WINDOW SETUP ---------------------------
     init_ncurses();
+    draw_title_screen(&state);
     create_windows(&gw);
+    spawn_mines(mines, &mine_count, &player, NULL);
+    person.pos = spawn_person(&player, mines, mine_count);
 
     // -------------------------- GAME LOOP -----------------------------------
-    while (state.running) {
+    while (state.running && state.lives > 0) {
         int ch = getch();
         
         // Updating
         handle_input(ch, &state, &player);
-        move_robot(state.dir, &player, &state);
+        if (state.ai_mode) {
+            move_robot_ai(&player, &person, mines, mine_count, &state, &gw);
+        } else {
+            move_robot(state.dir, &player, &state, mines, mine_count, &gw);
+        }
+
+        if (state.running == 0) break;
+
         update_mines(mines, mine_count);
+        check_collision(&player, &state, mines, mine_count, &gw);
 
         // Drawing
-        draw_ui(&gw, &state);
-        draw_game(&gw, &player, mines, mine_count);
-
+        update_UI(&gw, &state);
+        draw_game(&gw, &player, &person, &powerup, mines, mine_count, &state);
 
         // Update logic
-        if (state.lives <= 0) state.running = false;
+        handle_person_collection(&player, &person, &powerup, &state, mines, &mine_count);
+        if (powerup.pos.x == player.pos.x && powerup.pos.y == player.pos.y) {
+            state.shield_turns = 20;
+            powerup.pos.x = -1;
+            powerup.pos.y = -1;
+        }
+        if (state.shield_turns > 0) state.shield_turns--;
+
+        if (state.lives <= 0) state.running = 0;
         
-        napms(60);
+        napms(state.tick_delay);
         
     }
+
+    save_score(&state);
+    game_over_screen(&gw, &state);
 
     shutdown_ncurses(&gw);
     return 0;
 }
 
-void handle_input(int ch, GameState *state, Entity *player) {
-    switch(ch) {
-        case KEY_UP:
-            state->dir = NORTH;
-            break;
-        case KEY_DOWN:
-            state->dir = SOUTH;
-            break;
-        case KEY_LEFT:
-            state->dir = WEST;
-            break;
-        case KEY_RIGHT:
-            state->dir = EAST;
-            break;
-        case 'q':
-        case 'Q':
-            state->running = 0;
-            break;
-        default:
-            break;
+Vec2 spawn_person(Entity *robot, Mine *mines, int mine_count) {
+    Vec2 pos;
+    do {
+        pos.x = rand() % (BOARD_COLS - 2) + 1;
+        pos.y = rand() % (BOARD_ROWS - 2) + 1;
+    } while ((pos.x == robot->pos.x && pos.y == robot->pos.y) ||
+             mine_at(pos, mines, mine_count) ||
+             is_obstacle_position(pos));
+    return pos;
+}
+
+void handle_person_collection(Entity *robot, Entity *person, Entity *powerup, GameState *state, Mine *mines, int *mine_count) {
+    if (robot->pos.x == person->pos.x && robot->pos.y == person->pos.y) {
+        state->score++;
+        person->pos = spawn_person(robot, mines, *mine_count);
+        maybe_spawn_powerup(powerup, robot, mines, *mine_count);
+        if (state->score % 5 == 0) {
+            state->level++;
+            add_mines_for_level(mines, mine_count, 2, robot, person);
+            int delay = BASE_TICK_DELAY - (state->level - 1) * 2;
+            if (delay < 20) delay = 20;
+            state->tick_delay = delay;
+        }
     }
 }
 
-void move_robot(Direction dir, Entity *robot, GameState *state) {
-    if (dir != NONE) {
-        int new_y = robot->pos.y;
-        int new_x = robot->pos.x;
-        switch (dir) {
-            case NORTH:
-                new_y--;
-                break;
-            case SOUTH:
-                new_y++;
-                break;
-            case EAST:
-                new_x++;
-                break;
-            case WEST:
-                new_x--;
-                break;
-            case NONE:
-                break;
-            default:
-                break;
-        }
-
-        // Bounds checking:
-
-        if (new_y < 1 || new_y > BOARD_ROWS - 2 || new_x < 1 || new_x > BOARD_COLS - 2) {
-            state->lives--;
-            state->dir = NONE;
-            robot->pos.x = 10;
-            robot->pos.y = 10;
-            return;
-        }
-        robot->pos.x = new_x;
-        robot->pos.y = new_y;
+void maybe_spawn_powerup(Entity *powerup, Entity *robot, Mine *mines, int mine_count) {
+    if (powerup->pos.x != -1) return;
+    if ((rand() % 5) == 0) {
+        Vec2 pos;
+        do {
+            pos.x = rand() % (BOARD_COLS - 2) + 1;
+            pos.y = rand() % (BOARD_ROWS - 2) + 1;
+        } while (is_obstacle_position(pos) || mine_at(pos, mines, mine_count) ||
+                 (pos.x == robot->pos.x && pos.y == robot->pos.y));
+        powerup->pos = pos;
     }
 }
 
-void draw_ui(GameWindows *gw, GameState* state) {
+void update_UI(GameWindows *gw, GameState* state) {
     WINDOW* win = gw->ui_win;
     werase(win);
     box(win, 0, 0);
@@ -144,21 +168,74 @@ void draw_ui(GameWindows *gw, GameState* state) {
     mvwprintw(win, 2, 1, "Level: %d", state->level);
     mvwprintw(win, 2, 11, "Lives: %d", state->lives);
     mvwprintw(win, 2, 21, "Score: %d", state->score);
+    mvwprintw(win, 2, 31, "Mode: %s", state->ai_mode ? "AI" : "Manual");
+    if (state->shield_turns > 0) {
+        mvwprintw(win, 1, 25, "Shield: %d", state->shield_turns);
+    }
     wrefresh(win);
 }
 
-void draw_game(GameWindows *gw, Entity *player, Mine* mines, int mine_count) {
+void draw_game(GameWindows *gw, Entity *player, Entity *person, Entity *powerup, Mine* mines, int mine_count, GameState *state) {
     WINDOW* win = gw->game_win;
     werase(win); // reset the window
     box(win, 0, 0);
 
-    // Draw robot
-    mvwaddch(win, player->pos.y, player->pos.x, player->glyph);
+    draw_obstacle(gw);
+
+    // Draw person
+    mvwaddch(win, person->pos.y, person->pos.x, person->glyph | COLOR_PAIR(2));
 
     // Draw mines
     for (int i = 0; i < mine_count; i++) {
-        mvwaddch(win, mines[i].pos.y, mines[i].pos.x, MINE);
+        mvwaddch(win, mines[i].pos.y, mines[i].pos.x, MINE | COLOR_PAIR(3));
     }
 
+    // Draw powerup if active
+    if (powerup->pos.x >= 0) {
+        mvwaddch(win, powerup->pos.y, powerup->pos.x, powerup->glyph | COLOR_PAIR(5));
+    }
+
+    // Draw robot body/head
+    Direction render_dir = (state->dir == NONE) ? EAST : state->dir;
+    Vec2 body = body_position(player->pos, render_dir);
+    mvwaddch(win, body.y, body.x, ROBOT_BODY | COLOR_PAIR(1));
+    mvwaddch(win, player->pos.y, player->pos.x, head_char(render_dir) | COLOR_PAIR(1));
+
     wrefresh(win);
+}
+
+void game_over_screen(GameWindows *gw, GameState *state) {
+    destroy_windows(gw);
+    clear();
+    mvprintw(5, 10, "GAME OVER, %s!", state->player_name);
+    mvprintw(7, 10, "Final Score: %d  Level: %d", state->score, state->level);
+    mvprintw(9, 10, "Leaderboard:");
+    show_leaderboard(10);
+    mvprintw(18, 10, "Press any key to exit.");
+    refresh();
+    nodelay(stdscr, FALSE);
+    getch();
+}
+
+void save_score(GameState *state) {
+    FILE *file = fopen(LEADERBOARD_PATH, "a");
+    if (!file) return;
+    fprintf(file, "%s %d\n", state->player_name, state->score);
+    fclose(file);
+}
+
+void show_leaderboard(int start_row) {
+    FILE *file = fopen(LEADERBOARD_PATH, "r");
+    if (!file) {
+        mvprintw(start_row, 6, "No scores yet.");
+        return;
+    }
+    char name[32];
+    int score;
+    int row = start_row;
+    while (fscanf(file, "%31s %d", name, &score) == 2 && row < start_row + 6) {
+        mvprintw(row, 6, "%s - %d", name, score);
+        row++;
+    }
+    fclose(file);
 }

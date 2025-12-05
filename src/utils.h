@@ -28,6 +28,9 @@ typedef struct {
     int level;
     int running; // 1 = game running, 0 - not running
     Direction dir;
+    int ai_mode; // 0 manual, 1 AI
+    int tick_delay; // milliseconds between frames
+    int shield_turns; // creative enhancement: temporary shield duration
 } GameState;
 
 typedef struct {

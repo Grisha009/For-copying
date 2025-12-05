@@ -1,0 +1,8 @@
+bob 0
+bobbb 6
+b 2
+bob 0
+bob 6
+non 6
+m 28
+bob 2

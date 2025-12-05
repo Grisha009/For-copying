@@ -67,15 +67,35 @@ void update_mines(Mine* mines, int mine_count) {
     
 }
 
+int mine_at(Vec2 pos, Mine* mines, int mine_count) {
+    for (int i = 0; i < mine_count; i++) {
+        if (mines[i].pos.x == pos.x && mines[i].pos.y == pos.y) return 1;
+    }
+    return 0;
+}
 
-void init_mines(Mine* mines, int *mine_count) {
+
+static int mine_conflicts(Vec2 pos, Mine* mines, int mine_count, Entity *robot, Entity *person) {
+    if ((robot && pos.x == robot->pos.x && pos.y == robot->pos.y) ||
+        (person && pos.x == person->pos.x && pos.y == person->pos.y)) {
+        return 1;
+    }
+    for (int j = 0; j < mine_count; j++) {
+        if (mines[j].pos.x == pos.x && mines[j].pos.y == pos.y) return 1;
+    }
+    return 0;
+}
+
+void spawn_mines(Mine* mines, int *mine_count, Entity *robot, Entity *person) {
 
     for (int i = 0; i < 5; i++)
     {
         Mine m;
 
-        m.base_pos.x = rand() % (BOARD_COLS - 2) + 1;
-        m.base_pos.y = rand() % (BOARD_ROWS - 2) + 1;
+        do {
+            m.base_pos.x = rand() % (BOARD_COLS - 2) + 1;
+            m.base_pos.y = rand() % (BOARD_ROWS - 2) + 1;
+        } while (mine_conflicts(m.base_pos, mines, *mine_count, robot, person));
         m.pos = m.base_pos;
 
         if (i % 4 == 0) {
@@ -99,4 +119,20 @@ void init_mines(Mine* mines, int *mine_count) {
         (*mine_count)++;
     }
     
+}
+
+void add_mines_for_level(Mine* mines, int *mine_count, int additional, Entity *robot, Entity *person) {
+    for (int i = 0; i < additional && *mine_count < MAX_MINES; i++) {
+        Mine m;
+        do {
+            m.base_pos.x = rand() % (BOARD_COLS - 2) + 1;
+            m.base_pos.y = rand() % (BOARD_ROWS - 2) + 1;
+        } while (mine_conflicts(m.base_pos, mines, *mine_count, robot, person));
+        m.pos = m.base_pos;
+        m.type = (i % 2 == 0) ? MINE_LOOP_4 : MINE_LR;
+        m.dm = (rand() % 2 == 0) ? 1 : -1;
+        m.step = rand() % 4;
+        mines[*mine_count] = m;
+        (*mine_count)++;
+    }
 }
